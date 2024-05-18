@@ -1,18 +1,18 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "web" middleware group. Make something great!
-|
-*/
+use App\Http\Controllers\Payment;
 
 Route::get('/', function () {
     return view('welcome');
+});
+
+Route::controller(Payment::class)
+->prefix('payments')
+->as('payments')
+->group(function(){
+    Route::get('/token','token') -> name('token');
+    Route::get('/initiatepush','initiateStkPush') -> name('initiatepush ');
+    Route::post('/stkcallback','stkcallback') -> name('stkcallback');
+    Route::get('/admin', 'AdminController@index')->name('admin.dashboard');
 });
