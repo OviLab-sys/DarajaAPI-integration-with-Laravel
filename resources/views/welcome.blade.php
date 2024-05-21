@@ -5,7 +5,7 @@
     </head>
     <body>
         <div class='daraja'>
-            <h1>DarajaAPI Integration</h1>
+            <h1>DarajaAPI Integration project</h1>
         </div>
     </body>
 </html>

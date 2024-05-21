@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Payment;
 
+
 Route::get('/', function () {
     return view('welcome');
 });
