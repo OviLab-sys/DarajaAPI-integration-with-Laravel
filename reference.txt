@@ -1,0 +1,21 @@
+ $res = Json_decode(response()->json($body));
+
+            $ResponseCode = $res ->ResponseCode;
+            if ($ResponseCode == 0) {
+                $MerchantRequestID =$res ->MerchantRequestID;
+                $CheckoutRequestID=$res ->CheckoutRequestID;
+                $CustomerMessage = $res ->CustomerMessage;
+
+                //save to database
+                $payment= new StkData;
+                $payment ->phone=$PhoneNumber;
+                $payment ->amount=$Amount;
+                $payment ->reference=$AccountReference;
+                $payment ->description=$TransactionDesc;
+                $payment ->MerchantRequestID= $MerchantRequestID;
+                $payment ->CheckoutRequestID= $CheckoutRequestID;
+                $payment ->status= 'Requested';
+                $payment ->save();
+
+                return $CustomerMessage;
+            }
