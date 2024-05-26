@@ -8,6 +8,9 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::post('/stkcallback', [Payment::class, 'stkcallback']);
+
+
 Route::controller(Payment::class)
 ->prefix('payments')
 ->as('payments')

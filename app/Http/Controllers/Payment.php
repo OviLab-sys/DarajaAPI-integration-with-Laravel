@@ -5,12 +5,12 @@ use Carbon\Carbon;
 use Carbon\CarbonTimeZone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use illuminate\Support\Facades\Storage;
+//use illuminate\Support\Facades\Storage;
 use GuzzleHttp\Client;
 use Throwable;
 use App\Models\StkData;
 use GuzzleHttp\Exception\RequestException;
-
+use Storage;
 class Payment extends Controller{
     public function token(){
         $client = new Client();
@@ -47,7 +47,6 @@ class Payment extends Controller{
         
         
     
-
     public function initiateStkPush() {
         $client = new Client();
         
@@ -68,7 +67,7 @@ class Payment extends Controller{
         $PartyA = '254721630939'; // Should be in string format
         $PartyB = '174379';
         $PhoneNumber = '254721630939'; // Should be in string format
-        $CallBackURL = 'https://1cf2-102-215-33-72.ngrok-free.app/payments/stkcallback'; // Correct key name
+        $CallBackURL = 'https://89a3-102-215-33-72.ngrok-free.app/payments/stkcallback'; // Correct key name
         $AccountReference = 'Learnsoft Beliotech Solutions Ltd';
         $TransactionDesc = 'payment software services';
     
@@ -101,7 +100,29 @@ class Payment extends Controller{
             $body = json_decode($response->getBody(), true);
     
             // Return the response as JSON
-            return response()->json($body);
+            //return response()->json($body);
+            $res = json_decode(response() ->json($body));
+           $ResponseCode=$res->ResponseCode;
+
+        if($ResponseCode==0){
+            $MerchantRequestID=$res->MerchantRequestID;
+            $CheckoutRequestID=$res->CheckoutRequestID;
+            $CustomerMessage=$res->CustomerMessage;
+
+            //save to database
+            $payment= new StkData;
+            $payment->phone=$PhoneNumber;
+            $payment->amount=$Amount;
+            $payment->reference=$AccountReference;
+            $payment->description=$TransactionDesc;
+            $payment->MerchantRequestID=$MerchantRequestID;
+            $payment->CheckoutRequestID=$CheckoutRequestID;
+            $payment->status='Requested';
+            $payment->save();
+
+            return $CustomerMessage;
+        }
+
         } catch (\Exception $e) {
             // Handle exceptions and return the error message
             return response()->json(['error' => $e->getMessage()], 500);
@@ -113,7 +134,41 @@ class Payment extends Controller{
     
     
     public function stkcallback(){
-      $data=file_get_contents('php://input');
-      Storage::disk('local')->put('stk.txt',$data);
+        $data=file_get_contents('php://input');
+        Storage::disk('local')->put('stk.txt',$data);
+
+        $response=json_decode($data);
+
+        $ResultCode = $response->Body->stkCallback->ResultCode;
+
+        if($ResultCode==0){
+            $MerchantRequestID=$response->Body->stkCallback->MerchantRequestID;
+            $CheckoutRequestID=$response->Body->stkCallback->CheckoutRequestID;
+            $ResultDesc=$response->Body->stkCallback->ResultDesc;
+            $Amount=$response->Body->stkCallback->CallbackMetadata->Item[0]->Value;
+            $MpesaReceiptNumber=$response->Body->stkCallback->CallbackMetadata->Item[1]->Value;
+            //$Balance=$response->Body->stkCallback->CallbackMetadata->Item[2]->Value;
+            $TransactionDate=$response->Body->stkCallback->CallbackMetadata->Item[3]->Value;
+            $PhoneNumber=$response->Body->stkCallback->CallbackMetadata->Item[3]->Value;
+
+            $payment=StkData::where('CheckoutRequestID',$CheckoutRequestID)->firstOrfail();
+            $payment->status='Paid';
+            $payment->TransactionDate=$TransactionDate;
+            $payment->MpesaReceiptNumber=$MpesaReceiptNumber;
+            $payment->ResultDesc=$ResultDesc;
+            $payment->save();
+
+        }else{
+
+        $CheckoutRequestID=$response->Body->stkCallback->CheckoutRequestID;
+        $ResultDesc=$response->Body->stkCallback->ResultDesc;
+        $payment=StkData::where('CheckoutRequestID',$CheckoutRequestID)->firstOrfail();
+        
+        $payment->ResultDesc=$ResultDesc;
+        $payment->status='Failed';
+        $payment->save();
+
+        }
+
     }
 }
