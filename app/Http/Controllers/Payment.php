@@ -5,12 +5,15 @@ use Carbon\Carbon;
 use Carbon\CarbonTimeZone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-//use illuminate\Support\Facades\Storage;
 use GuzzleHttp\Client;
 use Throwable;
 use App\Models\StkData;
 use GuzzleHttp\Exception\RequestException;
-use Storage;
+use Illuminate\Support\Facades\Storage;
+
+//use Storage;
+
+
 class Payment extends Controller{
     public function token(){
         $client = new Client();
@@ -26,7 +29,7 @@ class Payment extends Controller{
 
         try {
         //Make the request to the Daraja API
-            $response = $client->request('GET', $url, [
+            $response = $client->request("GET", $url, [
                 'headers' => [
                     'Authorization' => 'Basic ' . $credentials,
                 ],
@@ -42,7 +45,7 @@ class Payment extends Controller{
         }
     }
     
-        
+     
     
         
         
@@ -52,7 +55,7 @@ class Payment extends Controller{
         
         $Stoken = json_decode($this->token()->content(), true);
         $accessToken = $Stoken["access_token"]; // Assuming the key is "access_token"
-;
+
         
         // Define the URL for the STK Push request
         $url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
@@ -67,7 +70,7 @@ class Payment extends Controller{
         $PartyA = '254721630939'; // Should be in string format
         $PartyB = '174379';
         $PhoneNumber = '254721630939'; // Should be in string format
-        $CallBackURL = 'https://89a3-102-215-33-72.ngrok-free.app/payments/stkcallback'; // Correct key name
+        $CallBackURL = 'https://16dc-102-215-33-72.ngrok-free.app/payments/stkcallback'; // Correct key name
         $AccountReference = 'Learnsoft Beliotech Solutions Ltd';
         $TransactionDesc = 'payment software services';
     
@@ -101,13 +104,16 @@ class Payment extends Controller{
     
             // Return the response as JSON
             //return response()->json($body);
-            $res = json_decode(response() ->json($body));
-           $ResponseCode=$res->ResponseCode;
+        
+    
+
+            //$res = json_decode(response() ->json($body));
+            $ResponseCode = $body['ResponseCode'];
 
         if($ResponseCode==0){
-            $MerchantRequestID=$res->MerchantRequestID;
-            $CheckoutRequestID=$res->CheckoutRequestID;
-            $CustomerMessage=$res->CustomerMessage;
+            $MerchantRequestID=$body["MerchantRequestID"];
+            $CheckoutRequestID=$body["CheckoutRequestID"];
+            $CustomerMessage=$body["CustomerMessage"];
 
             //save to database
             $payment= new StkData;
@@ -122,53 +128,80 @@ class Payment extends Controller{
 
             return $CustomerMessage;
         }
+    
 
-        } catch (\Exception $e) {
+    }catch (\Exception $e) {
             // Handle exceptions and return the error message
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
+
     
+   
+    public function stkcallback() {
+        // Get the raw input data
+        $data = file_get_contents('php://input');
     
+        // Store the raw input data for debugging purposes
+        Storage::disk('local')->put('stk_raw_input.txt', $data);
     
-    
-    
-    public function stkcallback(){
-        $data=file_get_contents('php://input');
-        Storage::disk('local')->put('stk.txt',$data);
-
-        $response=json_decode($data);
-
-        $ResultCode = $response->Body->stkCallback->ResultCode;
-
-        if($ResultCode==0){
-            $MerchantRequestID=$response->Body->stkCallback->MerchantRequestID;
-            $CheckoutRequestID=$response->Body->stkCallback->CheckoutRequestID;
-            $ResultDesc=$response->Body->stkCallback->ResultDesc;
-            $Amount=$response->Body->stkCallback->CallbackMetadata->Item[0]->Value;
-            $MpesaReceiptNumber=$response->Body->stkCallback->CallbackMetadata->Item[1]->Value;
-            //$Balance=$response->Body->stkCallback->CallbackMetadata->Item[2]->Value;
-            $TransactionDate=$response->Body->stkCallback->CallbackMetadata->Item[3]->Value;
-            $PhoneNumber=$response->Body->stkCallback->CallbackMetadata->Item[3]->Value;
-
-            $payment=StkData::where('CheckoutRequestID',$CheckoutRequestID)->firstOrfail();
-            $payment->status='Paid';
-            $payment->TransactionDate=$TransactionDate;
-            $payment->MpesaReceiptNumber=$MpesaReceiptNumber;
-            $payment->ResultDesc=$ResultDesc;
-            $payment->save();
-
-        }else{
-
-        $CheckoutRequestID=$response->Body->stkCallback->CheckoutRequestID;
-        $ResultDesc=$response->Body->stkCallback->ResultDesc;
-        $payment=StkData::where('CheckoutRequestID',$CheckoutRequestID)->firstOrfail();
-        
-        $payment->ResultDesc=$ResultDesc;
-        $payment->status='Failed';
-        $payment->save();
-
+        // Check if data is empty
+        if (empty($data)) {
+            Storage::disk('local')->put('stk_empty_data_error.txt', 'Received empty input data.');
+            return response()->json(['error' => 'Received empty input data'], 400);
         }
-
+    
+        // Decode the JSON data
+        $response = json_decode($data);
+    
+        // Check for JSON parsing errors
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $jsonError = json_last_error_msg();
+            // Log the JSON error with raw input
+            Storage::disk('local')->put('stk_json_error.txt', 'JSON Error: ' . $jsonError . "\nRaw Input: " . $data);
+    
+            // Handle the error (e.g., return an error response or log more details)
+            return response()->json(['error' => 'Invalid JSON data received', 'message' => $jsonError], 400);
+        }
+    
+        // Additional logging to inspect the decoded response
+        Storage::disk('local')->put('stk_decoded_response.txt', print_r($response, true));
+    
+        // Check if the necessary structure exists in the response
+        if (isset($response->Body->stkCallback->ResultCode)) {
+            $stkCallback = $response->Body->stkCallback;
+    
+            $ResultCode = $stkCallback->ResultCode;
+            $MerchantRequestID = $stkCallback->MerchantRequestID;
+            $CheckoutRequestID = $stkCallback->CheckoutRequestID;
+            $ResultDesc = $stkCallback->ResultDesc;
+    
+            if ($ResultCode == 0) {
+                $CallbackMetadata = $stkCallback->CallbackMetadata->Item;
+    
+                $Amount = $CallbackMetadata[0]->Value;
+                $MpesaReceiptNumber = $CallbackMetadata[1]->Value;
+                $TransactionDate = $CallbackMetadata[3]->Value;
+                $PhoneNumber = $CallbackMetadata[4]->Value;
+    
+                $payment = StkData::where('CheckoutRequestID', $CheckoutRequestID)->firstOrFail();
+                $payment->status = 'Paid';
+                $payment->TransactionDate = $TransactionDate;
+                $payment->MpesaReceiptNumber = $MpesaReceiptNumber;
+                $payment->ResultDesc = $ResultDesc;
+                $payment->save();
+            } else {
+                $payment = StkData::where('CheckoutRequestID', $CheckoutRequestID)->firstOrFail();
+                $payment->ResultDesc = $ResultDesc;
+                $payment->status = 'Failed';
+                $payment->save();
+            }
+        } else {
+            // Log the missing structure error with raw input and decoded response
+            Storage::disk('local')->put('stk_structure_error.txt', 'Missing expected structure in JSON data: ' . print_r($response, true) . "\nRaw Input: " . $data);
+    
+            // Handle the error (e.g., return an error response)
+            return response()->json(['error' => 'Invalid callback structure'], 400);
+        }
     }
-}
+} 
